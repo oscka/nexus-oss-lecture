@@ -131,19 +131,15 @@ cat /opt/nexus-data/admin.password
 
 ### Step 1: Docker Bearer Token Realm 활성화 (필수)
 1. `https://192.168.41.209:8443` 접속 및 로그인.
-2. 상단 톱니바퀴 (**Server Admin**) $
-rightarrow$ **Security** $
-rightarrow$ **Realms** 이동.
+2. 상단 톱니바퀴 (**Server Admin**) $\rightarrow$ **Security** $\rightarrow$ **Realms** 이동.
 3. **Docker Bearer Token Realm**을 `Active` 컬럼으로 이동 후 **Save**.
 
-### Step 2: Docker 저장소 3종 생성 (**Repositories** $
-rightarrow$ **Create repository**)
+### Step 2: Docker 저장소 3종 생성 (**Repositories** $\rightarrow$ **Create repository**)
 
 #### A. docker-hosted (Push 전용)
 - **Recipe**: `docker (hosted)`
 - **Name**: `docker-hosted`
-- **HTTPS**: Check $
-rightarrow$ Port: `8082` 입력
+- **HTTPS**: Check $\rightarrow$ Port: `8082` 입력
 - **Enable Docker V1 API**: Check
 - **Deployment policy**: `Allow redeploy`
 
@@ -157,8 +153,7 @@ rightarrow$ Port: `8082` 입력
 #### C. docker-group (통합 Pull 전용)
 - **Recipe**: `docker (group)`
 - **Name**: `docker-group`
-- **HTTPS**: Check $
-rightarrow$ Port: `8083` 입력
+- **HTTPS**: Check $\rightarrow$ Port: `8083` 입력
 - **Group Member**: `docker-hosted` (상단), `docker-proxy` (하단) 순서로 Selected 영역에 배치.
 
 ---
@@ -225,8 +220,5 @@ docker pull 192.168.41.209:8083/nginx:latest
 ```
 
 > **시연 검증 포인트**
-> 1. **Nexus Web UI** $
-rightarrow$ **Repositories** $
-rightarrow$ **docker-proxy** $
-rightarrow$ **Browse** 이동 시 `nginx` 이미지가 자동 Caching된 것을 확인합니다.
+> 1. **Nexus Web UI** $\rightarrow$ **Repositories** $\rightarrow$ **docker-proxy** $\rightarrow$ **Browse** 이동 시 `nginx` 이미지가 자동 Caching된 것을 확인합니다.
 > 2. 이후 동일한 외부 이미지 요청은 외부 인터넷 연결 유무와 상관없이 Nexus 내부 네트워크를 통해 즉시 수신 가능합니다.
