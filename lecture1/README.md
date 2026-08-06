@@ -372,8 +372,8 @@ Nexus가 실행 중인 서버(Docker 호스트)에서 NFS 공유 경로를 마�
 # 1) 로컬 마운트 포인트 디렉터리 생성
 mkdir -p ./nexus-nfs-blobs
 
-# 2) NFS 마운트 실행 (192.168.41.150 = NFS 서버 IP)
-sudo mount -t nfs 192.168.41.150:/srv/nfs/nexus-blobs $PWD/nexus-nfs-blobs
+# 2) NFS v4.1 마운트 실행 (성능 최적화 옵션, 192.168.41.150 = NFS 서버 IP)
+sudo mount -t nfs -o defaults,noatime,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,vers=4.1 192.168.41.150:/srv/nfs/nexus-blobs $PWD/nexus-nfs-blobs
 
 # 3) 마운트 및 소유권 확인 (200:200 표기 확인)
 ls -ld ./nexus-nfs-blobs
