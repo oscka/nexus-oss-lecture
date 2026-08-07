@@ -1,240 +1,196 @@
-# Docker Registry 실무 적용 및 Nexus3 레포지토리 구축 가이드
-
-> **본 가이드는 사내 컨테이너 전용 레포지토리(Nexus3)의 구축부터 TLS(HTTPS) SAN 인증서 적용, Docker Hosted/Proxy/Group 저장소 포트 분리 및 실무 이미지 Push/Pull/Caching 시연까지 전 과정을 다룹니다.**
+# Docker Registry 실무 적용
 
 ---
 
-## 1. 개요 및 배경 (Overview)
-
-### 1.1 Pain Point (현업의 주요 문제점)
-1. **사내 컨테이너 이미지 중앙 관리 체계 부재**
-   - 개발 팀 간 커스텀 Docker 이미지를 안전하고 체계적으로 공유할 표준 Private Registry가 부족함.
-   - 외부 Public Registry 직접 사용으로 인한 버전 관리 및 보안 거버넌스 공백 발생.
-2. **Docker Client SSL/TLS 통신 및 인증 설정 장벽**
-   - Docker Daemon은 기본적으로 HTTPS 통신을 강제하며, SAN(Subject Alternative Name)이 포함되지 않거나 신뢰할 수 없는 사설 인증서는 접속을 차단함 (`x509: certificate relies on legacy Common Name field` 또는 `unknown authority` 에러).
-3. **외부 망 트래픽 낭비 및 외부 장애 전파**
-   - CI/CD 파이프라인 빌드 시 매번 Docker Hub에서 동일한 Base Image를 수신하여 네트워크 대역폭 낭비 및 Rate Limit(도커허브 요청 제한) 발생.
-   - 외부망 연결 장애 시 사내 서비스 빌드/배포 전체 중단 risk.
-
-### 1.2 Solution (해결 방안)
-- **Sonatype Nexus Repository Manager 3 기반 저장소 이중화/통합**
-  - **Docker Hosted**: 사내 빌드 이미지 저장 (Push 전용)
-  - **Docker Proxy**: 외부 Docker Hub 이미지 캐싱 (Speedup 및 Rate Limit 회피)
-  - **Docker Group**: Hosted + Proxy 단일 엔드포인트 제공 (통합 Pull)
-- **Keytool 기반 SAN 사설 인증서 구성 및 Docker 신뢰 경로 등록**
-  - 복잡한 CA 체계 대신 `keytool` 단일 명령으로 IP 기반 SAN 인증서를 생성하여 TLS 통신 구축.
-  - Docker Client의 `/etc/docker/certs.d/<Host>:<Port>/ca.crt` 신뢰 경로 등록.
-- **데이터 영구 보존성 확보**
-  - VM Host Directory와 Docker Volume (`/nexus-data`) 직결로 컨테이너 재시작/재생성 시에도 데이터 보존.
+## 📌 목차
+1. [Pain Point & Solution](#1-pain-point--solution)
+2. [Docker Registry 아키텍처 (Hosted, Proxy, Group)](#2-docker-registry-아키텍처)
+3. [TLS/SSL 적용: Nginx vs Keytool (Direct SSL) 상세 분석](#3-tlsssl-적용-nginx-vs-keytool-direct-ssl-상세-분석)
+4. [사설 인증서(Self-Signed Certificate) 메커니즘 및 Trust Chain](#4-사설-인증서self-signed-certificate-메커니즘-및-trust-chain)
+5. [멀티 Registry Proxy & Group 구성 메커니즘 (Docker Hub, GHCR, Quay)](#5-멀티-registry-proxy--group-구성-메커니즘)
+6. [포트 분리를 통한 독립 Registry 노출 전략](#6-포트-분리를-통한-독립-registry-노출-전략)
 
 ---
 
-## 2. Architecture & Port Map
+## 1. Pain Point & Solution
 
-```
-+-----------------------------------------------------------------------------------+
-| VM Host (IP: 192.168.41.209)                                                      |
-|                                                                                   |
-|   +---------------------------------------------------------------------------+   |
-|   | Nexus3 Docker Container ( sonatype/nexus3:latest )                        |   |
-|   |                                                                           |   |
-|   |   [ Port 8081 ] ---> HTTP Web UI (Admin UI)                               |   |
-|   |   [ Port 8443 ] ---> HTTPS Web UI (SAN Cert Applied)                      |   |
-|   |                                                                           |   |
-|   |   [ Port 8082 ] ---> Docker Hosted Repo (Push: 사내 이미지 저장)            |   |
-|   |   [ Port 8083 ] ---> Docker Group Repo  (Pull: 사내 + Caching 외부 이미지)   |   |
-|   |                       |-- Member 1: Docker Hosted Repo                    |   |
-|   |                       +-- Member 2: Docker Proxy Repo (Docker Hub)        |   |
-|   |                                                                           |   |
-|   +---------------------------------------------------------------------------+   |
-|                                                                                   |
-|   Volume Mount: /opt/nexus-data <---> /nexus-data                                |
-+-----------------------------------------------------------------------------------+
-```
+- **Pain Point:** 사내 전용 Container Registry의 부재, Docker 통신 시 TLS/인증서 설정의 어려움, 외부 저장소(Docker Hub, GHCR, Quay 등) 접근 제어 및 다운로드 제한(Rate Limit) 문제.
+- **Solution:** Nexus 3를 통한 단일 접점 구축, HTTP Listener 및 Keytool 기반 TLS 통신 구성, Proxy 및 Group Repository를 활용한 컨테이너 패키지 통합 관리.
 
 ---
 
-## 3. 실습 1: Host Directory 및 Volume 사전 작업
+## 2. Docker Registry 아키텍처
 
-VM Host에서 Nexus 데이터 및 SSL 인증서가 저장될 영구 디렉토리를 생성하고, Nexus 내부 실행 계정(UID `200`, GID `200`) 권한을 부여합니다.
+```mermaid
+graph TD
+    subgraph Client ["개발자 PC / CI Server"]
+        DKC("Docker Client")
+    end
 
-```bash
-# 1. VM Host 내 Nexus 데이터 및 SSL 저장소 디렉토리 생성
-mkdir -p /opt/nexus-data/etc/ssl
+    subgraph NexusGroup ["Nexus Docker Group (URL:Port 묶음)"]
+        GPR_1("docker-group<br/>(포트 매핑 예: 18082)")
+    end
 
-# 2. SSL 인증서 작업 전용 임시 디렉토리 생성
-mkdir -p /root/nexus-ssl
+    subgraph NexusMembers ["Nexus 저장소 멤버 (우선순위 순서)"]
+        HPR_1("1순위: docker-hosted<br/>(사내 빌드 이미지 저장)")
+    end
 
-# 3. Nexus 컨테이너 권한(UID:GID = 200:200) 매핑
-chown -R 200:200 /opt/nexus-data
+    subgraph NexusProxies ["Nexus 외부 Proxy"]
+        PPR_1("2순위: dockerhub-proxy<br/>(Docker Hub)")
+        PPR_2("3순위: ghcr-proxy<br/>(GHCR - PAT 인증 필요)")
+        PPR_3("4순위: quay-proxy<br/>(Red Hat Quay)")
+    end
+
+    subgraph ExtReg ["외부 컨테이너 레지스트리"]
+        EXT_D("Docker Hub")
+        EXT_G("ghcr.io (GitHub)")
+        EXT_Q("quay.io (Red Hat)")
+    end
+
+    DKC -. Pull 요청: 18082 .-> GPR_1
+    GPR_1 ==> HPR_1
+    GPR_1 ==> PPR_1
+    GPR_1 ==> PPR_2
+    GPR_1 ==> PPR_3
+
+    PPR_1 -- 캐시 요청 --> EXT_D
+    EXT_D == 이미지 제공 ==> PPR_1
+    
+    PPR_2 -- PAT인증+캐시 요청 --> EXT_G
+    EXT_G == 이미지 제공 ==> PPR_2
+
+    PPR_3 -- 캐시 요청 --> EXT_Q
+    EXT_Q == 이미지 제공 ==> PPR_3
+
+    DKC -- Push 요청 (독립 포트 주입 시) --> HPR_1
+
+    classDef client fill:#e0f2fe,stroke:#2563eb,stroke-width:2px;
+    classDef nexus fill:#f1f5f9,stroke:#0f172a,stroke-width:2px;
+    classDef members fill:#fff,stroke:#1e293b,stroke-width:1.5px;
+    classDef ext fill:#fee2e2,stroke:#ef4444,stroke-width:2px;
+
+    class Client,DKC client;
+    class NexusGroup,NexusMembers,NexusProxies nexus;
+    class GPR_1,HPR_1,PPR_1,PPR_2,PPR_3 members;
+    class ExtReg,EXT_D,EXT_G,EXT_Q ext;
 ```
+
+### 아키텍처 핵심 설명
+- **Hosted Repository:** 사내에서 직접 생성하고 빌드한 커스텀 Docker 이미지를 저장 (Read/Write 권한 분리 대상).
+- **Proxy Repository:** 외부 Docker Registry(Docker Hub, GHCR, Quay)의 캐시 저장소 역할 (Read Only).
+- **Group Repository:** 여러 Hosted 및 Proxy 저장소를 하나의 URL/포트로 묶어서 제공하는 가상 레지스트리. Member List 우선순위에 따라 순차 탐색.
 
 ---
 
-## 4. 실습 2: Keytool 기반 SAN 인증서 발급 및 TLS 환경 설정
+## 3. TLS/SSL 적용: Nginx vs Keytool (Direct SSL) 상세 분석
 
-Docker Daemon은 IP 접속 시 **SAN(Subject Alternative Name)** 항목에 해당 IP가 명시되어 있어야 인증서를 수용합니다.
+```mermaid
+graph LR
+    subgraph Client ["Docker Client (개발자 PC)"]
+        DKC("DKC")
+    end
 
-### Step 1: SAN 주입 JKS 키스토어 생성 및 공개키 추출
+    subgraph SSL_Nginx ["방법 1: Nginx SSL Termination (일반적인 방식)"]
+        NGX("Nginx Reverse Proxy")
+        NEX_N("Nexus Instance<br/>(Embedded Jetty)")
+    end
 
-```bash
-# 1. SSL 작업 디렉토리 이동
-cd /root/nexus-ssl
+    subgraph SSL_Keytool ["방법 2: Keytool 기반 Direct SSL (Zero Trust 보안)"]
+        NEX_K("Nexus Instance<br/>(Embedded Jetty)")
+    end
 
-# 2. Keytool 단일 명령어로 SAN이 포함된 JKS 키스토어 생성 (비밀번호: password)
-keytool -genkeypair -keystore keystore.jks   -storepass password -keypass password   -alias nexus -keyalg RSA -keysize 2048 -validity 3650   -dname "CN=192.168.41.209, OU=IT, O=MyCompany, L=Seoul, ST=Seoul, C=KR"   -ext "SAN=ip:192.168.41.209"
+    DKC -- "(A) HTTPS 443" --> NGX
+    NGX -- "(B) HTTP 8081 (평문)" --> NEX_N
 
-# 3. Docker Client 신뢰 등록용 PEM/CRT 공개키 인증서 추출
-keytool -exportcert -keystore keystore.jks   -storepass password -alias nexus -rfc -file nexus.crt
+    DKC -- "(C) HTTPS 18082 (In-Transit Encrypted)" --> NEX_K
+
+    classDef client fill:#e0f2fe,stroke:#2563eb,stroke-width:1px;
+    classDef nginx fill:#f8fafc,stroke:#0f172a,stroke-width:2px,stroke-dasharray: 5 5;
+    classDef keytool fill:#f1f5f9,stroke:#1e3a8a,stroke-width:2px;
+    classDef comp fill:#fff,stroke:#1e293b,stroke-width:1.5px;
+
+    class Client,DKC client;
+    class SSL_Nginx,NGX nginx;
+    class NEX_N,NEX_K comp;
+    class SSL_Keytool keytool;
 ```
 
-### Step 2: Nexus Volume 경로 복사 및 권한 설정
+### 이론 심화: 보안 정책별 인증서 적용 비교
+1. **Nginx SSL Termination:**
+   - Client~Proxy 구간만 SSL 암호화. Nginx와 Nexus 간 내부 통신(HTTP 8081)은 평문(In-Transit Unencrypted) 전달.
+   - **장점:** 중앙 집중식 인증서 관리 및 갱신 편의성.
+2. **Keytool 기반 Direct SSL:**
+   - Zero Trust 네트워크 보안 규정 준수. Reverse Proxy 내부 구간까지 포함한 **End-to-End In-Transit Encryption** 구현.
+   - **설정 원리:** Java Keystore(JKS) 생성 후 Nexus의 Embedded Jetty 서버 엔진 설정(`nexus.properties`, `jetty-https.xml`)을 직접 수정하여 SSL Connector 활성화.
 
+#### Keytool 및 Jetty 설정 절차 원리
 ```bash
-# 1. 생성된 JKS 및 CRT 파일을 Volume 경로로 복사
-cp -f /root/nexus-ssl/keystore.jks /opt/nexus-data/etc/ssl/keystore.jks
-cp -f /root/nexus-ssl/nexus.crt /opt/nexus-data/etc/ssl/nexus.crt
+# 1. Keystore 생성 및 Self-Signed 인증서 발급
+keytool -genkeypair -keystore $NEXUS_HOME/etc/ssl/keystore.jks -storepass changeit -keypass changeit   -alias nexus -keyalg RSA -keysize 2048 -validity 365   -dname "CN=nexus.company.local, OU=DevOps, O=Company, L=Seoul, C=KR"
 
-# 2. 소유권(200:200) 및 읽기 권한 설정
-chown -R 200:200 /opt/nexus-data/etc/ssl
-chmod 644 /opt/nexus-data/etc/ssl/keystore.jks
-chmod 644 /opt/nexus-data/etc/ssl/nexus.crt
-```
+# 2. $NEXUS_HOME/bin/nexus.properties 수정
+# nexus-args 설정 라인에 ${jetty.etc}/jetty-https.xml 추가 주석 해제하여 HTTPS Listener 엔진 활성화
+nexus-args=${jetty.etc}/jetty.xml,${jetty.etc}/jetty-http.xml,${jetty.etc}/jetty-requestlog.xml,${jetty.etc}/jetty-https.xml
 
-### Step 3: nexus.properties 설정 (HTTPS 활성화)
-
-`/opt/nexus-data/etc/nexus.properties` 파일에 HTTPS 포트 및 JKS 설정 정보를 정의합니다.
-
-```bash
-cat <<'EOF' > /opt/nexus-data/etc/nexus.properties
-nexus-args=${jetty.etc}/jetty.xml,${jetty.etc}/jetty-https.xml,${jetty.etc}/jetty-requestlog.xml
-application-port-ssl=8443
-ssl.etc=/nexus-data/etc/ssl
-jetty.sslContext.keyStorePath=/nexus-data/etc/ssl/keystore.jks
-jetty.sslContext.keyStorePassword=password
-jetty.sslContext.keyManagerPassword=password
-EOF
-
-# 파일 권한 설정
-chown -R 200:200 /opt/nexus-data/etc
-```
-
----
-
-## 5. 실습 3: Nexus Docker 컨테이너 구동 및 검증
-
-```bash
-# 1. 기존 nexus 컨테이너 정리
-docker stop nexus 2>/dev/null && docker rm nexus 2>/dev/null
-
-# 2. Nexus3 컨테이너 실행 (Volume 및 포트 바인딩)
-docker run -d   --name nexus   -p 8081:8081   -p 8443:8443   -p 8082:8082   -p 8083:8083   -v /opt/nexus-data:/nexus-data   --restart always   sonatype/nexus3:latest
-
-# 3. 실시간 구동 로그 확인 ("Started Sonatype Nexus Repository Manager" 확인)
-docker logs -f nexus
-```
-
-### 초기 비밀번호 확인 및 접속
-```bash
-# 초기 admin 비밀번호 출력
-cat /opt/nexus-data/admin.password
-```
-- 웹 브라우저 접속: `https://192.168.41.209:8443`
-- 비밀번호 변경 및 익명 접근 설정 진행.
-
----
-
-## 6. 실습 4: Nexus Web UI 저장소 구성 & Realm 활성화
-
-### Step 1: Docker Bearer Token Realm 활성화 (필수)
-1. `https://192.168.41.209:8443` 접속 후 관리자 로그인.
-2. **Server Admin (톱니바퀴)** -> **Security** -> **Realms** 이동.
-3. `Docker Bearer Token Realm` 항목을 **Active** 컬럼으로 이동 후 **Save**.
-
-### Step 2: Docker 저장소 3종 생성 (**Repositories** -> **Create repository**)
-
-#### A. `docker-hosted` (사내 이미지 업로드/Push 전용)
-- **Recipe**: `docker (hosted)`
-- **Name**: `docker-hosted`
-- **HTTP/HTTPS**: `HTTPS` 체크 -> Port: `8082` 입력
-- **Enable Docker V1 API**: 체크
-- **Deployment policy**: `Allow redeploy`
-
-#### B. `docker-proxy` (외부 Docker Hub 캐싱 전용)
-- **Recipe**: `docker (proxy)`
-- **Name**: `docker-proxy`
-- **HTTP/HTTPS**: 체크 안 함 *(단독 외부에 포트 노출 불필요)*
-- **Remote storage**: `https://registry-1.docker.io`
-- **Docker Index**: `Use Docker Hub`
-
-#### C. `docker-group` (통합 이미지 다운로드/Pull 전용)
-- **Recipe**: `docker (group)`
-- **Name**: `docker-group`
-- **HTTP/HTTPS**: `HTTPS` 체크 -> Port: `8083` 입력
-- **Group Members**: `docker-hosted` (상단 우선순위), `docker-proxy` (하단 순서) 배치
-
----
-
-## 7. 실습 5: Docker Client SSL 신뢰 등록 및 라이브 시연
-
-### Step 1: Docker Client 인증서 신뢰 등록 (`certs.d`)
-
-```bash
-# 1. 포트별 Docker certs.d 디렉토리 생성
-mkdir -p /etc/docker/certs.d/192.168.41.209:8082          /etc/docker/certs.d/192.168.41.209:8083          /etc/docker/certs.d/192.168.41.209:8443
-
-# 2. 추출한 SAN 인증서(nexus.crt)를 각 포트의 ca.crt로 복사
-cp -f /root/nexus-ssl/nexus.crt /etc/docker/certs.d/192.168.41.209:8082/ca.crt
-cp -f /root/nexus-ssl/nexus.crt /etc/docker/certs.d/192.168.41.209:8083/ca.crt
-cp -f /root/nexus-ssl/nexus.crt /etc/docker/certs.d/192.168.41.209:8443/ca.crt
-
-# 3. Docker 데몬 재시작
-systemctl restart docker
+# 3. $NEXUS_HOME/etc/jetty/jetty-https.xml 수정
+# KeyStorePassword 및 KeyManagerPassword 적용 및 HTTPS 포트 매핑
 ```
 
 ---
 
-### Step 2: [시연 1] Hosted 저장소 로그인 및 이미지 Push
+## 4. 사설 인증서(Self-Signed Certificate) 메커니즘 및 Trust Chain
+
+### 사설 인증서 에러 발생 원리
+Docker Daemon은 Go 언어의 TLS 표준 라이브러리를 사용하며, 기본적으로 호스트 OS의 Root CA Store(신뢰할 수 있는 인증기관)에 등록된 CA만 승인합니다. Self-Signed 인증서 사용 시 아래와 같이 Trust Chain 검증 실패 에러가 발생합니다.
+
+> `Error response from daemon: Get "https://nexus.company.local:18082/v2/": x509: certificate signed by unknown authority`
+
+### 해결책 메커니즘 비교
+1. **`insecure-registries` 지정 (비권장/테스트용):**
+   - TLS 검증 절차 자체를 무시(Bypass)하도록 Docker Daemon 동작을 변경. TLS 암호화를 해제하는 것과 같아 보안 정책 무력화.
+2. **`certs.d` 경로 CA 인증서 주입 (운영 권장 - Truststore 확장):**
+   - Docker Daemon이 특정 레지스트리(Domain:Port)와 통신할 때 고유하게 신뢰할 사설 CA 인증서를 추가 등록. TLS 암호화 통신을 정상 유지하면서 Trust Chain을 형성.
 
 ```bash
-# 1. Hosted 저장소(8082 포트) 로그인
-docker login 192.168.41.209:8082
-# ID: admin / PW: <변경한 비밀번호>
-
-# 2. 테스트용 alpine 이미지 다운로드 및 태깅
-docker pull alpine:latest
-docker tag alpine:latest 192.168.41.209:8082/my-service:v1.0
-
-# 3. Hosted 저장소로 이미지 Push
-docker push 192.168.41.209:8082/my-service:v1.0
+# Docker Client truststore 확장 경로 규칙: /etc/docker/certs.d/[Domain:Port]/ca.crt
+sudo mkdir -p /etc/docker/certs.d/nexus.company.local:18082
+sudo cp nexus.crt /etc/docker/certs.d/nexus.company.local:18082/ca.crt
+sudo systemctl restart docker
 ```
 
 ---
 
-### Step 3: [시연 2] Group 저장소에서 사내 이미지 Pull
+## 5. 멀티 Registry Proxy & Group 구성 메커니즘
+
+### OCI / Docker v2 Spec 과 GHCR OAuth Challenge 문제
+- **Docker Hub:** Anonymous Rate Limit (비로그인 제한) 규정에 따른 캐싱 필요성.
+- **GHCR (GitHub Container Registry) 주의사항:** GHCR은 OCI 표준 토큰 인증 시 Anonymous Client 요청에 대해 401/403 Challenge를 엄격하게 적용합니다. Nexus가 Anonymous 상태로 GHCR을 Proxy할 경우 패키지 획득 실패가 발생하므로, **Nexus Proxy의 `HTTP/HTTPS Authentication` 항목에 GitHub Personal Access Token(PAT) 사전 주입이 필수적**입니다.
+- **Quay:** Red Hat Quay 패키지 캐싱 원리.
 
 ```bash
-# 1. Group 저장소(8083 포트) 로그인
-docker login 192.168.41.209:8083
-
-# 2. 로컬 이미지 삭제 후 검증
-docker rmi 192.168.41.209:8082/my-service:v1.0 alpine:latest
-
-# 3. Group 포트(8083)를 통해 사내 이미지 Pull
-docker pull 192.168.41.209:8083/my-service:v1.0
+# Group Repository를 통한 단일 창구 다운로드 테스트
+docker pull nexus.company.local:18082/ubuntu:latest
+docker pull nexus.company.local:18082/homebrew/ubuntu22.04:latest
+docker pull nexus.company.local:18082/quay/busybox:latest
 ```
 
 ---
 
-### Step 4: [시연 3] Proxy 저장소를 통한 외부 이미지 Caching Pull
+## 6. 포트 분리를 통한 독립 Registry 노출 전략
 
-```bash
-# 1. 외부 이미지(nginx)를 Group 포트(8083)로 요청
-docker pull 192.168.41.209:8083/nginx:latest
-```
+### 왜 Group 단일 통로 대신 레지스트리별 포트를 분리하는가? (Why Port Separation?)
+1. **방화벽(ACL) 및 IP 통제:** 사내 네트워크 보안 정책에 따라 특정 부서/서버에만 특정 레지스트리 접근 허용.
+2. **이미지 네이밍 충돌 방지:** 서로 다른 레지스트리 간 동일 패키지 이름(`ubuntu`, `nginx` 등) 혼선 차단.
+3. **CI/CD 및 운영 트래픽 격리:** 배포 파이프라인 트래픽과 일반 개발 트래픽의 물리적 분리.
+4. **Push/Pull 권한 오용 차단:** Push 전용(Hosted)과 Pull 전용(Proxy/Group)의 포트 격리.
 
-> **검증 포인트**:
-> 1. Nexus Web UI (`https://192.168.41.209:8443`) -> **Browse** -> `docker-proxy` 이동 시 `nginx` 캐시 생성 확인.
-> 2. 차후 동일 요청 시 외부 인터넷망 연결이 끊겨도 Nexus 내부 캐시를 통해 고속 다운로드 가능.
+동일한 Nexus 인스턴스 내에서 **Repository Connectors** 기능을 활용해 포트 단위로 저장소 접근 권한 및 물리적 통로를 격리합니다.
+
+| Repository Name | Type | Assigned Port | 목적 및 보안 정책 |
+| :--- | :--- | :--- | :--- |
+| **docker-group** | Group | HTTPS 18082 | 개발자 공통 이미지 Pull 전용 (읽기 전용 창구) |
+| **docker-hosted** | Hosted | HTTPS 18083 | CI/CD 파이프라인 전용 Push/Pull 창구 (격리) |
+| **ghcr-proxy** | Proxy | HTTPS 18084 | 외부 GHCR 전용 독립 통로 |
+| **quay-proxy** | Proxy | HTTPS 18085 | 외부 Quay 전용 독립 통로 |
 
 ---
