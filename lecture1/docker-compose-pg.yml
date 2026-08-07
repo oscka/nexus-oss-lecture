@@ -1,0 +1,38 @@
+services:
+  nexus-db:
+    image: "bitnami/postgresql:latest"
+    container_name: "nexus-postgres"
+    restart: "unless-stopped"
+    environment:
+      - POSTGRESQL_USERNAME=nexus
+      - POSTGRESQL_PASSWORD=nexus123!
+      - POSTGRESQL_DATABASE=nexus
+      - POSTGRESQL_POSTGRES_PASSWORD=admin123!
+    volumes:
+      - "./nexus-psql-data:/bitnami/postgresql"
+    networks:
+      - "nexus_pg_net"
+
+  nexus-pg:
+    image: "sonatype/nexus3:3.94.1"
+    container_name: "nexus-pg"
+    restart: "unless-stopped"
+    ports:
+      - "8082:8081"
+    environment:
+      - NEXUS_DATASTORE_ENABLED=true
+      - NEXUS_DATASTORE_NEXUS_JDBCURL=jdbc:postgresql://nexus-db:5432/nexus
+      - NEXUS_DATASTORE_NEXUS_USERNAME=nexus
+      - NEXUS_DATASTORE_NEXUS_PASSWORD=nexus123!
+      - NEXUS_DATASTORE_NEXUS_ADVANCED=maximumPoolSize=200
+    volumes:
+      - "./nexus-pg-data:/nexus-data"
+#      - "./nexus-nfs-blobs:/nexus-data/blobs/nfs-blobstore"
+    depends_on:
+      - "nexus-db"
+    networks:
+      - "nexus_pg_net"
+
+networks:
+  nexus_pg_net:
+    driver: "bridge"
