@@ -1,5 +1,3 @@
-
-
 # Nexus Repository 실무 초급: 모듈 1. 기본 구성 및 스토리지 설계
 
 ## 1. 개요 및 배경 (Overview)
@@ -50,8 +48,7 @@ Nexus Repository는 과거 OrientDB(현재 지원 종료 수순)를 거쳐, 현�
 | **가용성 (HA)** | 단일 노드 전용 (HA 불가) | Active-Standby (2-Node) 구성 지원 |
 | **데이터 안정성** | 비정상 종료 시 DB 파일 손상 위험 높음 | 트랜잭션 보장 및 백업/복구 안정성 높음 |
 | **컨테이너 운영** | **공식적인 상용 컨테이너 배포 미지원** | Docker, K8s 등 클라우드 네이티브 환경 지원 |
-| **특이 사항** | 설치가 간편함 (별도 DB 구성 불필요) | **`pg_trgm` 모듈 필수**, DB Owner 권한 필수 |
-
+| **특이 사항** | 설치가 간편함 (별도 DB 구성 불필요) | DB Owner 권한 필수 (관련 에러 발생 시 `pg_trgm` 모듈 추가 필요) |
 
 ---
 
@@ -76,6 +73,7 @@ services:
     volumes:
       - "./nexus-h2-data:/nexus-data"
 
+
 ```
 
 **2. 데이터 저장 디렉토리 생성 및 권한 부여**
@@ -84,6 +82,7 @@ services:
 ```bash
 mkdir -p ./nexus-h2-data
 sudo chown -R 200:200 ./nexus-h2-data
+
 
 ```
 
@@ -98,13 +97,14 @@ docker exec -it nexus-h2 cat /nexus-data/admin.password
 
 # UI 접속확인
 http://localhost:8081
+
 ```
 
 ---
 
 #### [실습 3-2] PostgreSQL 연동 Nexus 배포 (`docker-compose-pg.yml`)
 
-상용 환경 구성을 가정하여, 외부 PostgreSQL 컨테이너와 연동하고 필수 모듈(`pg_trgm`)을 활성화하는 실습입니다.
+상용 환경 구성을 가정하여, 외부 PostgreSQL 컨테이너와 연동하는 실습입니다.
 
 **1. docker-compose-pg.yml 작성**
 
@@ -150,6 +150,7 @@ networks:
   nexus_pg_net:
     driver: "bridge"
 
+
 ```
 
 **2. 데이터 저장 디렉토리 생성 및 권한 부여**
@@ -160,26 +161,25 @@ mkdir -p ./nexus-pg-data ./nexus-psql-data
 sudo chown -R 200:200 ./nexus-pg-data
 sudo chown -R 1001:1001 ./nexus-psql-data
 
+
 ```
 
 **3. 컨테이너 실행 및 접속 검증**
-PostgreSQL 연동 시 가장 주의할 점은, **Nexus 기동 전 DB에 `pg_trgm` (Trigram) 확장 모듈이 반드시 생성**되어 있어야 한다는 것입니다. (정규식 기반 아티팩트 검색에 사용됨)
+테스트된 PostgreSQL 18.4 버전의 경우 `pg_trgm` (Trigram) 확장 모듈을 직접 설치하지 않아도 문제없이 작동하므로 기본 설정으로 진행합니다. 단, 사용 중 관련 에러가 발생하는 환경이라면 DB 접속 후 `CREATE EXTENSION IF NOT EXISTS pg_trgm;` 구문을 실행하여 모듈을 추가해야 합니다.
 
 ```bash
 # 1) DB 컨테이너 구동
 docker compose -f docker-compose-pg.yml up -d nexus-db
 
-# 2) PostgreSQL 필수 Extension(pg_trgm) 생성 (핵심 단계)
-docker exec -it nexus-postgres psql -U nexus -d nexus -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;"
-
-# 3) Nexus 컨테이너 구동
+# 2) Nexus 컨테이너 구동
 docker compose -f docker-compose-pg.yml up -d nexus-pg
 
-# 4) 초기 비밀번호 확인
+# 3) 초기 비밀번호 확인
 docker exec -it nexus-pg cat /nexus-data/admin.password
 
-# 5) UI 접속확인
+# 4) UI 접속확인
 http://localhost:8081
+
 ```
 
 ---
@@ -221,11 +221,12 @@ networks:
     # 주의: 앞선 컨테이너를 실행한 디렉토리명에 따라 네트워크 접두사가 달라집니다. (예: 폴더명이 nexus-oss-lecture인 경우)
     name: "nexus-oss-lecture_nexus_pg_net" 
 
+
 ```
 
 #### 2. 디렉토리 생성 및 자체 서명 SSL 인증서 발급
 
-로컬 환경 테스트를 위해 `mkcert`를 이용해 SSL 인증서를 생성합니다.
+테스트 목적으로 `mkcert`를 사용합니다. `mkcert`는 사용 시 로컬 머신에 Root CA를 자동으로 생성하고 등록해 주기 때문에 로컬 환경 접속 시에는 인증 문제 경고가 발생하지 않습니다. 그러나 다른 PC나 외부 환경에서 접속할 경우에는 인증서를 신뢰할 수 없어 보안 경고가 발생합니다.
 
 ```bash
 mkdir -p ./nginx/ssl ./nginx/conf.d
@@ -233,11 +234,12 @@ mkdir -p ./nginx/ssl ./nginx/conf.d
 # mkcert를 이용한 SSL 인증서 생성 (localhost 및 127.0.0.1용)
 mkcert -cert-file ./nginx/ssl/nexus.pem -key-file ./nginx/ssl/nexus-key.pem localhost 127.0.0.1
 
+
 ```
 
 #### 3. conf 파일 작성 (`./nginx/conf.d/nginx.conf`)
 
->  핵심 설정 디렉티브 분석
+> 핵심 설정 디렉티브 분석
 > * `proxy_buffering off;` : 대용량 바이너리 스트리밍 시 Nginx 디스크 버퍼를 거치지 않고 Nexus로 즉시 전달하여 I/O 병목 및 업로드 지연 방지.
 > * `client_max_body_size 0;` : Nginx의 기본 업로드 제한(1MB)을 해제하여 Docker 레이어 업로드 시 발생하는 `413 Too Large` 에러 방지.
 > * `proxy_set_header X-Forwarded-Proto https;` : Nexus 내부 리다이렉션 링크가 HTTP로 깨지는 현상 예방.
@@ -280,6 +282,7 @@ server {
     }
 }
 
+
 ```
 
 #### 4. 컨테이너 실행 및 접속 검증
@@ -288,11 +291,11 @@ server {
 # nginx 컨테이너 구동
 docker compose -f docker-compose-nginx.yml up -d
 
+
 ```
 
 1. 웹 브라우저를 열고 `http://localhost`로 접속합니다.
 2. `https://localhost`로 자동 리다이렉트 되는지 확인하고, SSL 인증서가 정상 적용되어 자물쇠 아이콘이 표시되는지 확인합니다.
-
 
 ---
 
@@ -307,7 +310,7 @@ Blob Store는 메타데이터(DB 저장)를 제외한 실제 바이너리 아티
 리포지토리는 단일 Blob Store 혹은 Group Blob Store에 1:N으로 연결됩니다.
 여러 리포지토리가 동일한 Blob Store를 공유할 수 있으며, 최적의 성능을 위해 지연 시간(Latency)이 가장 낮은 위치에 할당하는 것이 원칙입니다.
 
-#### 2. 파일 난독화 및 임의 수정 금지 (매우 중요)
+#### 2. 파일 난독화 및 임의 수정 금지
 
 리포지토리에 파일을 추가하면 Nexus는 파일 이름 충돌과 OS 파일 시스템 제약을 방지하기 위해 파일명을 난독화(Hash 형태 등)하여 저장합니다.
 
@@ -362,6 +365,7 @@ echo "/srv/nfs/nexus-blobs *(rw,sync,no_subtree_check,all_squash,insecure,anonui
 # 3) NFS 서비스 재적용
 sudo exportfs -r
 
+
 ```
 
 #### 2. Nexus Docker 호스트 측 마운트 (NFS Client)
@@ -378,6 +382,7 @@ sudo mount -t nfs -o defaults,noatime,rsize=1048576,wsize=1048576,hard,timeo=600
 # 3) 마운트 및 소유권 확인 (200:200 표기 확인)
 ls -ld ./nexus-nfs-blobs
 
+
 ```
 
 #### 3. Compose 파일 볼륨 추가 (`docker-compose-pg.yml`)
@@ -391,12 +396,14 @@ services:
       # 아래 내용 추가
       - "./nexus-nfs-blobs:/nexus-data/blobs/nfs-blobstore"
 
+
 ```
 
 적용 후 컨테이너를 재시작합니다.
 
 ```bash
 docker compose -f docker-compose-pg.yml up -d nexus-pg
+
 
 ```
 
@@ -406,10 +413,10 @@ docker compose -f docker-compose-pg.yml up -d nexus-pg
 2. 좌측 메뉴 **Settings (톱니바퀴 아이콘)** 클릭
 3. 좌측 메뉴 **Repository** ➡️ **Blob Stores** 클릭
 4. **Create blob store** 버튼 클릭 후 항목 입력:
+
 * **Type:** `File` 선택
 * **Name:** `nfs-file-blobstore`
 * **Path:** `/nexus-data/blobs/nfs-blobstore` *(컨테이너 내부 볼륨 바인딩 경로 입력)*
-
 
 5. **Save** 클릭하여 생성
 
@@ -418,6 +425,7 @@ docker compose -f docker-compose-pg.yml up -d nexus-pg
 ```bash
 docker exec nexus-pg df -h /nexus-data
 docker exec nexus-pg df -h /nexus-data/blobs/nfs-blobstore
+
 
 ```
 
@@ -435,12 +443,12 @@ docker exec nexus-pg df -h /nexus-data/blobs/nfs-blobstore
 2. 좌측 메뉴 **Settings (톱니바퀴 아이콘)** 클릭
 3. 좌측 메뉴 **Repository** ➡️ **Blob Stores** 클릭
 4. **Create blob store** 버튼 클릭 후 항목 입력:
+
 * **Type:** `S3` 선택
 * **Name:** `S3-blobstore`
 * **Region:** `생성 시 선택한 Region 선택`
 * **Bucket:** `S3 Bucket Name 입력`
 * **Access Key ID:** `IAM에서 생성한 Access Key ID 입력`
 * **Secret Access Key:** `IAM에서 생성한 Secret Access Key 입력`
-
 
 5. **Save** 클릭하여 생성
