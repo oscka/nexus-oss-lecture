@@ -1,0 +1,18 @@
+services:
+  nginx:
+    image: "nginx:alpine"
+    container_name: "nexus-nginx"
+    restart: "unless-stopped"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "./nginx/conf.d:/etc/nginx/conf.d"
+      - "./nginx/ssl:/etc/nginx/ssl"
+    networks:
+      - "nexus_pg_net"
+
+networks:
+  nexus_pg_net:
+    external: true
+    name: "nexus-oss-lecture_nexus_pg_net"
