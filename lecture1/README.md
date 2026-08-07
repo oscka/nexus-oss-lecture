@@ -56,7 +56,7 @@ Nexus Repository는 과거 OrientDB(현재 지원 종료 수순)를 거쳐, 현�
 
 앞서 살펴본 두 가지 DB 아키텍처를 바탕으로, 각각의 환경을 구축해 봅니다.
 
-#### [실습 3-1] H2 DB 기반 Nexus 배포 (`docker-compose-h2.yml`)
+#### [실습 3-1] H2 DB 기반 Nexus 배포 [docker-compose-h2.yml](docker-compose-h2.yml)
 
 모든 데이터와 메타데이터가 `nexus-data` 볼륨 내부의 파일 기반 DB(H2)에 저장되는 가장 단순한 형태입니다.
 
@@ -102,7 +102,7 @@ http://localhost:8081
 
 ---
 
-#### [실습 3-2] PostgreSQL 연동 Nexus 배포 (`docker-compose-pg.yml`)
+#### [실습 3-2] PostgreSQL 연동 Nexus 배포 [docker-compose-pg.yml](docker-compose-pg.yml)
 
 상용 환경 구성을 가정하여, 외부 PostgreSQL 컨테이너와 연동하는 실습입니다.
 
@@ -196,7 +196,7 @@ Nexus Repository를 운영할 때 JVM(Nexus 본체)에 직접 SSL 인증서를 �
 
 ---
 
-### [실습] Nginx 구성 및 SSL 인증서 연동
+### [실습] Nginx 구성 및 SSL 인증서 연동 [docker-compose-nginx.yml](docker-compose-nginx.yml)
 
 #### 1. docker-compose-nginx.yml 작성
 
@@ -237,7 +237,7 @@ mkcert -cert-file ./nginx/ssl/nexus.pem -key-file ./nginx/ssl/nexus-key.pem loca
 
 ```
 
-#### 3. conf 파일 작성 (`./nginx/conf.d/nginx.conf`)
+#### 3. conf 파일 작성 [./nginx/conf.d/nginx.conf](./nginx/conf.d/nginx.conf)
 
 > 핵심 설정 디렉티브 분석
 > * `proxy_buffering off;` : 대용량 바이너리 스트리밍 시 Nginx 디스크 버퍼를 거치지 않고 Nexus로 즉시 전달하여 I/O 병목 및 업로드 지연 방지.
