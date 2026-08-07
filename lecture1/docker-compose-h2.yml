@@ -1,0 +1,9 @@
+services:
+  nexus-h2:
+    image: "sonatype/nexus3:3.94.1"
+    container_name: "nexus-h2"
+    restart: "unless-stopped"
+    ports:
+      - "8081:8081"
+    volumes:
+      - "./nexus-h2-data:/nexus-data"
