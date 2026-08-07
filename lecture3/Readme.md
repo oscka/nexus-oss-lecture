@@ -149,12 +149,18 @@ Docker Daemon은 Go 언어의 TLS 표준 라이브러리를 사용하며, 기본
 1. **`insecure-registries` 지정 (비권장/테스트용):**
    - TLS 검증 절차 자체를 무시(Bypass)하도록 Docker Daemon 동작을 변경. TLS 암호화를 해제하는 것과 같아 보안 정책 무력화.
 2. **`certs.d` 경로 CA 인증서 주입 (운영 권장 - Truststore 확장):**
-   - Docker Daemon이 특정 레지스트리(Domain:Port)와 통신할 때 고유하게 신뢰할 사설 CA 인증서를 추가 등록. TLS 암호화 통신을 정상 유지하면서 Trust Chain을 형성.
+   - Docker Daemon이 특정 레지스트리(Domain:Port)와 통신할 때 고유하게 신뢰할 사설 CA 인증서를 추가 등록.
+   - **주의사항:** Keytool에서 인증서 export 시 반드시 **`-rfc` 옵션(PEM 포맷)**을 부여해야 Docker Daemon이 정상 파싱할 수 있습니다.
 
 ```bash
-# Docker Client truststore 확장 경로 규칙: /etc/docker/certs.d/[Domain:Port]/ca.crt
+# 1. PEM(ASCII) 포맷으로 Public 인증서 추출 (-rfc 필수)
+keytool -exportcert -keystore $NEXUS_HOME/etc/ssl/keystore.jks -alias nexus -file nexus.crt -rfc
+
+# 2. Docker Client truststore 확장 경로로 복사 (파일명 확장자 .crt 필수)
 sudo mkdir -p /etc/docker/certs.d/nexus.company.local:18082
 sudo cp nexus.crt /etc/docker/certs.d/nexus.company.local:18082/ca.crt
+
+# 3. Docker Daemon 재시작
 sudo systemctl restart docker
 ```
 
@@ -163,9 +169,12 @@ sudo systemctl restart docker
 ## 5. 멀티 Registry Proxy & Group 구성 메커니즘
 
 ### OCI / Docker v2 Spec 과 GHCR OAuth Challenge 문제
-- **Docker Hub:** Anonymous Rate Limit (비로그인 제한) 규정에 따른 캐싱 필요성.
-- **GHCR (GitHub Container Registry) 주의사항:** GHCR은 OCI 표준 토큰 인증 시 Anonymous Client 요청에 대해 401/403 Challenge를 엄격하게 적용합니다. Nexus가 Anonymous 상태로 GHCR을 Proxy할 경우 패키지 획득 실패가 발생하므로, **Nexus Proxy의 `HTTP/HTTPS Authentication` 항목에 GitHub Personal Access Token(PAT) 사전 주입이 필수적**입니다.
-- **Quay:** Red Hat Quay 패키지 캐싱 원리.
+- **Docker Hub:** Remote URL: `https://registry-1.docker.io` (Anonymous Rate Limit 대응을 위한 캐싱).
+- **GHCR (GitHub Container Registry) 검증된 설정:**
+  - Remote URL: `https://ghcr.io/` (Trailing Slash 누락 시 OCI Redirect 이슈 발생 가능).
+  - **GHCR 패키지 정책 핵심:** GHCR은 Public 패키지라 할지라도 **`read:packages` 권한을 가진 Personal Access Token(PAT)으로 인증되지 않은 요청에 대해 Layer 403 Forbidden 에러**를 반환합니다.
+  - **해결책:** Nexus Proxy 설정의 `HTTP/HTTPS Authentication` 항목에 **Username(GitHub ID) 및 Password(PAT)**를 반드시 사전 등록해야 올바른 Authenticated Proxy로 동작합니다.
+- **Quay:** Remote URL: `https://quay.io/`
 
 ```bash
 # Group Repository를 통한 단일 창구 다운로드 테스트
