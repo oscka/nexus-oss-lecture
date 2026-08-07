@@ -1,5 +1,6 @@
 # Docker Registry 실무 적용
 
+
 ---
 
 ## 📌 목차
@@ -123,10 +124,11 @@ graph LR
    - Zero Trust 네트워크 보안 규정 준수. Reverse Proxy 내부 구간까지 포함한 **End-to-End In-Transit Encryption** 구현.
    - **설정 원리:** Java Keystore(JKS) 생성 후 Nexus의 Embedded Jetty 서버 엔진 설정(`nexus.properties`, `jetty-https.xml`)을 직접 수정하여 SSL Connector 활성화.
 
-#### Keytool 및 Jetty 설정 절차 원리
+#### Keytool 및 Jetty 설정 절차 원리 (SAN 옵션 필수)
 ```bash
-# 1. Keystore 생성 및 Self-Signed 인증서 발급
-keytool -genkeypair -keystore $NEXUS_HOME/etc/ssl/keystore.jks -storepass changeit -keypass changeit   -alias nexus -keyalg RSA -keysize 2048 -validity 365   -dname "CN=nexus.company.local, OU=DevOps, O=Company, L=Seoul, C=KR"
+# 1. Keystore 생성 및 Self-Signed 인증서 발급 (-ext SAN 필수)
+# 최신 TLS 표준 규격상 SAN(Subject Alternative Name)이 포함되지 않으면 Docker Daemon에서 에러 발생
+keytool -genkeypair -keystore $NEXUS_HOME/etc/ssl/keystore.jks -storepass changeit -keypass changeit   -alias nexus -keyalg RSA -keysize 2048 -validity 365   -dname "CN=nexus.company.local, OU=DevOps, O=Company, L=Seoul, C=KR"   -ext "SAN=dns:nexus.company.local,dns:localhost,ip:127.0.0.1"
 
 # 2. $NEXUS_HOME/bin/nexus.properties 수정
 # nexus-args 설정 라인에 ${jetty.etc}/jetty-https.xml 추가 주석 해제하여 HTTPS Listener 엔진 활성화
@@ -150,18 +152,16 @@ Docker Daemon은 Go 언어의 TLS 표준 라이브러리를 사용하며, 기본
    - TLS 검증 절차 자체를 무시(Bypass)하도록 Docker Daemon 동작을 변경. TLS 암호화를 해제하는 것과 같아 보안 정책 무력화.
 2. **`certs.d` 경로 CA 인증서 주입 (운영 권장 - Truststore 확장):**
    - Docker Daemon이 특정 레지스트리(Domain:Port)와 통신할 때 고유하게 신뢰할 사설 CA 인증서를 추가 등록.
+   - **핵심 특징:** `/etc/docker/certs.d/` 경로에 배치된 인증서는 Docker Daemon 요청 시 온디맨드로 로드되므로 **데몬 재시작이 필요 없습니다**.
    - **주의사항:** Keytool에서 인증서 export 시 반드시 **`-rfc` 옵션(PEM 포맷)**을 부여해야 Docker Daemon이 정상 파싱할 수 있습니다.
 
 ```bash
 # 1. PEM(ASCII) 포맷으로 Public 인증서 추출 (-rfc 필수)
-keytool -exportcert -keystore $NEXUS_HOME/etc/ssl/keystore.jks -alias nexus -file nexus.crt -rfc
+keytool -exportcert -keystore $NEXUS_HOME/etc/ssl/keystore.jks -alias nexus -file nexus.crt -rfc -storepass changeit
 
-# 2. Docker Client truststore 확장 경로로 복사 (파일명 확장자 .crt 필수)
+# 2. Docker Client truststore 확장 경로로 복사 (파일명 확장자 .crt 필수, 데몬 재시작 불필요)
 sudo mkdir -p /etc/docker/certs.d/nexus.company.local:18082
 sudo cp nexus.crt /etc/docker/certs.d/nexus.company.local:18082/ca.crt
-
-# 3. Docker Daemon 재시작
-sudo systemctl restart docker
 ```
 
 ---
