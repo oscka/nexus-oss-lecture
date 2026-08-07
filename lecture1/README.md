@@ -188,7 +188,7 @@ http://localhost:8081
 
 ### 리버스 프록시 도입의 핵심 이점 (Why Reverse Proxy?)
 
-Nexus Repository를 운영할 때 JVM(Nexus 본체)에 직접 SSL 인증서를 적용하기보다는, 앞단에 Nginx와 같은 리버스 프록시를 두는 아키텍처가 전 세계 표준으로 권장됩니다.
+Nexus Repository를 운영할 때 JVM(Nexus 본체)에 직접 SSL 인증서를 적용하기보다는, 앞단에 Nginx와 같은 리버스 프록시를 두는 아키텍처가 일반적으로 권장됩니다.
 
 * **SSL/TLS Offloading:** CPU 연산량이 많은 SSL 암복호화 처리를 Nginx가 전담하여 Nexus 본체의 부하를 줄입니다.
 * **보안 및 포트 표준화:** Docker Client는 보안상 HTTPS(443) 통신이 강제되므로 SSL 프록시 구성이 필수입니다.
