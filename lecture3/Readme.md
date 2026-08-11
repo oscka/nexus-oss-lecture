@@ -131,8 +131,6 @@ graph LR
 
 ---
 
----
-
 ## 3-1. 호스트 터미널 작업 (Direct SSL 설정)
 ```bash
 #Nexus 3 컨테이너 구동
@@ -184,8 +182,6 @@ docker restart nexus
 
 ---
 
----
-
 ## 3-2. 브라우저 UI 작업 (`https://192.168.41.206:8443`)
 1. **Realm 활성화:** `Security -> Realms` ➔ **`Docker Bearer Token Realm`** Active 목록으로 이동 후 `Save`
 2. **저장소 5개 생성:**
@@ -217,8 +213,6 @@ Docker Daemon은 Go 언어의 TLS 표준 라이브러리를 사용하며, 기본
    - Docker Daemon이 특정 레지스트리(Domain:Port 또는 IP:Port)와 통신할 때 신뢰할 사설 CA/Leaf 인증서를 추가 등록.
    - **핵심 특징:** `/etc/docker/certs.d/` 경로는 온디맨드로 로드되므로 **데몬 재시작이 불필요**.
    - **주의사항:** Keytool에서 추출 시 반드시 **`-rfc` 옵션(PEM 포맷)**을 부여해야 함.
-
----
 
 ---
 
@@ -278,7 +272,6 @@ docker login 192.168.41.206:18082 -u admin -p [비밀번호]
 
 > 💡 **핵심 메커니즘:** Docker Client는 `IP:포트번호` 조합을 서로 다른 독립된 레지스트리 서버로 인식합니다. 따라서 `18083` 포트로 `docker login`을 완료했더라도, `18082` 포트 접근 시 해당 인증 정보가 공유되지 않습니다. 포트별로 로그인을 각각 진행하거나 Nexus에서 Anonymous 읽기 권한을 허용해야 합니다.
 
----
 ---
 
 ## 6-1. 호스트 터미널 검증 스크립트
