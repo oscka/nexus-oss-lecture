@@ -131,6 +131,78 @@ graph LR
 
 ---
 
+---
+
+## 3-1. 호스트 터미널 작업 (Direct SSL 설정)
+```bash
+#Nexus 3 컨테이너 구동
+sudo docker run -d \
+  --name nexus \
+  --restart always \
+  -p 8081:8081 \
+  -p 8443:8443 \
+  -p 18082:18082 \
+  -p 18083:18083 \
+  -p 18084:18084 \
+  -p 18085:18085 \
+  -v /nexus-data:/nexus-data \
+  sonatype/nexus3:latest
+
+# 1. 호스트의 /nexus-data 디렉터리에 SSL 폴더 생성
+sudo mkdir -p /nexus-data/etc/ssl
+
+# 2. Keytool 명령어를 docker exec로 단발성 실행 (키스토어 파일은 /nexus-data에 바로 저장)
+docker exec -it nexus keytool -genkeypair \
+  -keystore /nexus-data/etc/ssl/keystore.jks \
+  -storepass password \
+  -keypass password \
+  -alias nexus \
+  -keyalg RSA \
+  -keysize 2048 \
+  -validity 3650 \
+  -deststoretype JKS \
+  -dname "CN=192.168.41.206, OU=IT, O=MyCompany, L=Seoul, ST=Seoul, C=KR" \
+  -ext "SAN=ip:192.168.41.206"
+
+# 3. /nexus-data/etc/nexus.properties SSL 설정 작성
+sudo bash -c "cat << 'EOF' > /nexus-data/etc/nexus.properties
+nexus-args=\${jetty.etc}/jetty.xml,\${jetty.etc}/jetty-http.xml,\${jetty.etc}/jetty-requestlog.xml,\${jetty.etc}/jetty-https.xml
+application-port=8081
+application-port-ssl=8443
+
+ssl.etc=/nexus-data/etc/ssl
+jetty.sslContext.keyStorePath=/nexus-data/etc/ssl/keystore.jks
+jetty.sslContext.keyStorePassword=password
+jetty.sslContext.keyManagerPassword=password
+EOF"
+
+# 4. 권한 정제 및 Nexus 컨테이너 재시작
+sudo chown -R 200:200 /nexus-data/etc
+
+docker restart nexus
+```
+
+---
+
+---
+
+## 3-2. 브라우저 UI 작업 (`https://192.168.41.206:8443`)
+1. **Realm 활성화:** `Security -> Realms` ➔ **`Docker Bearer Token Realm`** Active 목록으로 이동 후 `Save`
+2. **저장소 5개 생성:**
+
+| Repository Name | Recipe | 세부 설정 옵션값 |
+| :--- | :--- | :--- |
+| **`docker-hosted`** | `docker (hosted)` | HTTPS Port: **`18083`** / Enable V1 API: **체크** / Deployment policy: **Allow redeploy** |
+| **`ghcr-proxy`** | `docker (proxy)` | HTTPS Port: **`18084`** / Remote Storage: `https://ghcr.io/` / Docker Index: **`Use proxy registry (specified above)`** |
+| **`quay-proxy`** | `docker (proxy)` | HTTPS Port: **`18085`** / Remote Storage: `https://quay.io/` / Docker Index: **`Use proxy registry (specified above)`** |
+| **`dockerhub-proxy`**| `docker (proxy)` | **포트 미할당 (체크 해제)** / Remote Storage: `https://registry-1.docker.io` / Docker Index: **`Use Docker Hub Index`** |
+| **`docker-group`** | `docker (group)` | HTTPS Port: **`18082`** / Members 순서: `hosted` ➔ `dockerhub` ➔ `ghcr` ➔ `quay` |
+
+```bash
+docker login 192.168.41.206:18083 -u admin -p [비밀번호]
+```
+---
+
 ## 4. 사설 인증서(Self-Signed Certificate) 메커니즘 및 Trust Chain
 
 ### 사설 인증서 에러 발생 원리
@@ -145,6 +217,36 @@ Docker Daemon은 Go 언어의 TLS 표준 라이브러리를 사용하며, 기본
    - Docker Daemon이 특정 레지스트리(Domain:Port 또는 IP:Port)와 통신할 때 신뢰할 사설 CA/Leaf 인증서를 추가 등록.
    - **핵심 특징:** `/etc/docker/certs.d/` 경로는 온디맨드로 로드되므로 **데몬 재시작이 불필요**.
    - **주의사항:** Keytool에서 추출 시 반드시 **`-rfc` 옵션(PEM 포맷)**을 부여해야 함.
+
+---
+
+---
+
+## 4-1. 인증서 주입 & `docker login` 성공 확인
+```bash
+# 1. JKS 키스토어에서 PEM(-rfc) 포맷 인증서 추출
+docker exec -it nexus keytool -exportcert \
+  -keystore /nexus-data/etc/ssl/keystore.jks \
+  -alias nexus \
+  -file /nexus-data/etc/ssl/nexus.crt \
+  -rfc \
+  -storepass password
+
+# 2. Docker Client PC의 certs.d 경로로 복사 (데몬 재시작 불필요)
+sudo mkdir -p /etc/docker/certs.d/192.168.41.206:18082
+sudo mkdir -p /etc/docker/certs.d/192.168.41.206:18083
+sudo mkdir -p /etc/docker/certs.d/192.168.41.206:18084
+sudo mkdir -p /etc/docker/certs.d/192.168.41.206:18085
+
+sudo cp /nexus-data/etc/ssl/nexus.crt /etc/docker/certs.d/192.168.41.206:18082/ca.crt
+sudo cp /nexus-data/etc/ssl/nexus.crt /etc/docker/certs.d/192.168.41.206:18083/ca.crt
+sudo cp /nexus-data/etc/ssl/nexus.crt /etc/docker/certs.d/192.168.41.206:18084/ca.crt
+sudo cp /nexus-data/etc/ssl/nexus.crt /etc/docker/certs.d/192.168.41.206:18085/ca.crt
+
+# 3. 인증서 주입 후 로그인 재시도 (성공 검증)
+docker login 192.168.41.206:18083 -u admin -p [비밀번호]
+docker login 192.168.41.206:18082 -u admin -p [비밀번호]
+```
 
 ---
 
@@ -175,5 +277,29 @@ Docker Daemon은 Go 언어의 TLS 표준 라이브러리를 사용하며, 기본
 | **quay-proxy** | Proxy | HTTPS 18085 | 외부 Quay 전용 독립 통로 | 18085 개별 로그인 필요 |
 
 > 💡 **핵심 메커니즘:** Docker Client는 `IP:포트번호` 조합을 서로 다른 독립된 레지스트리 서버로 인식합니다. 따라서 `18083` 포트로 `docker login`을 완료했더라도, `18082` 포트 접근 시 해당 인증 정보가 공유되지 않습니다. 포트별로 로그인을 각각 진행하거나 Nexus에서 Anonymous 읽기 권한을 허용해야 합니다.
+
+---
+---
+
+## 6-1. 호스트 터미널 검증 스크립트
+```bash
+# 1. Group 창구(18082)를 통한 Docker Hub 이미지 Pull & 캐싱 검증
+docker pull 192.168.41.206:18082/ubuntu:latest
+
+# 2. GHCR 전용 포트(18084) 또는 Group 포트(18082)를 통한 GHCR 이미지 Pull & 캐싱 검증
+docker pull 192.168.41.206:18084/stefanprodan/podinfo:latest
+docker pull 192.168.41.206:18082/stefanprodan/podinfo:latest
+
+# 3. Quay 전용 포트(18085) 또는 Group 포트(18082)를 통한 Quay 이미지 Pull & 캐싱 검증
+docker pull 192.168.41.206:18085/quay/busybox:latest
+docker pull 192.168.41.206:18082/quay/busybox:latest
+
+# 4. 캐싱된 외부 이미지를 사내 Hosted 저장소 전용 포트(18083)로 Tagging 후 Push 업로드
+docker tag 192.168.41.206:18084/stefanprodan/podinfo:latest 192.168.41.206:18083/my-company/podinfo:v1
+docker push 192.168.41.206:18083/my-company/podinfo:v1
+
+# 5. Hosted 저장소에 저장된 사내 이미지 Group 창구(18082)를 통해 최종 Pull 확인
+docker pull 192.168.41.206:18082/my-company/podinfo:v1
+```
 
 ---
