@@ -188,7 +188,7 @@ docker restart nexus
 
 | Repository Name | Recipe | 세부 설정 옵션값 |
 | :--- | :--- | :--- |
-| **`docker-hosted`** | `docker (hosted)` | HTTPS Port: **`18083`** / Enable V1 API: **체크** / Deployment policy: **Allow redeploy** |
+| **`docker-hosted`** | `docker (hosted)` | HTTPS Port: **`18083`** / Deployment policy: **Allow redeploy** |
 | **`ghcr-proxy`** | `docker (proxy)` | HTTPS Port: **`18084`** / Remote Storage: `https://ghcr.io/` / Docker Index: **`Use proxy registry (specified above)`** |
 | **`quay-proxy`** | `docker (proxy)` | HTTPS Port: **`18085`** / Remote Storage: `https://quay.io/` / Docker Index: **`Use proxy registry (specified above)`** |
 | **`dockerhub-proxy`**| `docker (proxy)` | **포트 미할당 (체크 해제)** / Remote Storage: `https://registry-1.docker.io` / Docker Index: **`Use Docker Hub Index`** |
