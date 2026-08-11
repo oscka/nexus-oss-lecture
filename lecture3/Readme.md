@@ -143,15 +143,20 @@ Docker Daemon은 Go 언어의 TLS 표준 라이브러리를 사용하며, 기본
 
 ---
 
-## 5. 멀티 Registry Proxy & Group 구성 메커니즘 (GHCR 프록시 연동)
+### 5. 멀티 Registry Proxy & Group 구성 메커니즘 (GHCR / Quay 연동)
 
-### OCI / Docker v2 Spec 과 GHCR 연동 매커니즘
-- **Docker Hub:** Remote URL: `[https://registry-1.docker.io](https://registry-1.docker.io)`
-- **GHCR (GitHub Container Registry):**
-  - Remote URL: `[https://ghcr.io/](https://ghcr.io/)`
-  - **연동 메커니즘:** Public 이미지는 별도의 PAT 인증 설정 없이 Remote URL만 등록하여 즉시 프록시 캐싱이 가능합니다.
-  - **PAT 활용:** 사내 **Private GHCR 패키지 연동**이나 CI/CD 트래픽 폭주 시 **Rate Limit을 방지**해야 하는 운영 환경에서는 HTTP/HTTPS Authentication 메뉴에 GitHub ID와 `read:packages` 권한의 PAT를 등록하여 'Authenticated Proxy'로 확장할 수 있습니다.
-- **Group 라우팅 및 이미지 충돌 주의점:** 동일 이미지 이름(`ubuntu` 등) 조회 시 멤버 순서에 따른 혼선을 방지하기 위해 Nexus의 `Routing Rules` 기능을 설정하여 패키지 경로별 매핑 제어.
+- **Docker Hub:** Remote URL: `https://registry-1.docker.io` (Docker Index: `Use Docker Hub Index` 필수)
+- **GHCR (GitHub Container Registry):** Remote URL: `https://ghcr.io/` (Docker Index: `Use proxy registry` 필수)
+- **Quay:** Remote URL: `https://quay.io/` (Docker Index: `Use proxy registry` 필수)
+
+#### 🔑 GHCR PAT(Personal Access Token) 연동 전략
+- **Public 이미지:** 별도 인증(PAT) 설정 없이 Remote URL 지정만으로 즉시 캐싱 가능.
+- **Private 패키지 및 Rate Limit 대응:** 
+  - 조직 내 Private GHCR 패키지를 프록시하거나, 트래픽 폭주 시 GitHub IP 제한(Rate Limit)을 방지하려면 **`read:packages` 권한의 PAT**를 발급하여 Nexus HTTP/HTTPS Authentication 메뉴에 등록 (Authenticated Proxy로 동작).
+
+#### 🔀 Group 라우팅 및 이미지 이름 충돌(Naming Collision) 방지
+- 여러 프록시와 Hosted 저장소를 `docker-group` 하나로 묶을 때, 서로 다른 레지스트리에 동일한 이름(예: `ubuntu`, `busybox`)의 이미지가 존재하면 **Member List 순서**에 따라 의도치 않은 저장소의 이미지가 끌려올 수 있음.
+- **해결책:** Nexus의 **`Routing Rules`** 기능을 활용해 특정 딜리버리 경로(예: `github/*`, `quay/*`)별로 프록시 매핑을 강제 제어하여 이미지 이름 충돌을 방지함.
 
 ---
 
