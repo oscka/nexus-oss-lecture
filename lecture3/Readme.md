@@ -14,8 +14,8 @@
 
 ## 1. Pain Point & Solution
 
-- **Pain Point:** 사내 전용 Container Registry 부재, Docker 통신 시 TLS/인증서 설정의 어려움, 외부 저장소(Docker Hub, GHCR, Quay 등) 접근 제어 및 다운로드 제한(Rate Limit) 문제.
-- **Solution:** Nexus 3를 통한 단일 접점 구축, HTTP Listener 및 Keytool 기반 TLS 통신 구성, 별도 인증 없이도 Public 이미지를 캐싱하는 Proxy 및 Group Repository 통합 관리.
+- **Pain Point:** 사내 전용 Container Registry 부재, Self-Signed SSL 통신 시 Docker Client 인증 에러, 외부 레지스트리(Docker Hub, GHCR, Quay 등) 다운로드 제한(Rate Limit) 및 관리 접점 파편화 문제.
+- **Solution:** Nexus 3 기반의 단일 접점 구축, Keytool을 활용한 Direct SSL(HTTPS) 암호화 통신 적용, 외부 이미지를 자동 캐싱하는 Proxy 저장소와 이를 하나로 통합하는 Group 레지스트리 구성.
 
 ---
 
