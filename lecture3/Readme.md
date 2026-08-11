@@ -14,8 +14,13 @@
 
 ## 1. Pain Point & Solution
 
-- **Pain Point:** 사내 전용 Container Registry 부재, Self-Signed SSL 통신 시 Docker Client 인증 에러, 외부 레지스트리(Docker Hub, GHCR, Quay 등) 다운로드 제한(Rate Limit) 및 관리 접점 파편화 문제.
-- **Solution:** Nexus 3 기반의 단일 접점 구축, Keytool을 활용한 Direct SSL(HTTPS) 암호화 통신 적용, 외부 이미지를 자동 캐싱하는 Proxy 저장소와 이를 하나로 통합하는 Group 레지스트리 구성.
+- **Pain Point:** 
+  - 사내 전용 저장소의 부재 : 팀마다 이미지를 저장할 단일 접점이 없어 빌드된 이미지가 파편화되고 관리 통제가 불가능
+  - 보안 및 인증 통제의 어려움 : Docker 데몬은 Self-Signed 사설 인증서 사용 시 SSL 에러를 발생
+  - 외부 레지스트리 다운로드 제한 : 외부 저장소 이용 시 Rate Limit(다운로드 횟수 제한)에 걸리거나, 외부 망 장애 시 CI/CD 파이프라인이 즉시 중단되는 위험에 노출
+
+- **Solution:** 
+  - Nexus3 기반의 단일 접점 구축, Keytool을 활용한 Direct SSL(HTTPS) 암호화 통신 적용, 외부 이미지를 자동 캐싱하는 Proxy 저장소와 이를 하나로 통합하는 Group 레지스트리 구성.
 
 ---
 
