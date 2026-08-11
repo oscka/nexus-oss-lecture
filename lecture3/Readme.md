@@ -145,9 +145,9 @@ Docker Daemon은 Go 언어의 TLS 표준 라이브러리를 사용하며, 기본
 
 ### 5. 멀티 Registry Proxy & Group 구성 메커니즘 (GHCR / Quay 연동)
 
-- **Docker Hub:** Remote URL: `https://registry-1.docker.io` (Docker Index: `Use Docker Hub Index` 필수)
-- **GHCR (GitHub Container Registry):** Remote URL: `https://ghcr.io/` (Docker Index: `Use proxy registry` 필수)
-- **Quay:** Remote URL: `https://quay.io/` (Docker Index: `Use proxy registry` 필수)
+- **Docker Hub:** Remote URL: `https://registry-1.docker.io` (Docker Index: `Use Docker Hub Index`)
+- **GHCR (GitHub Container Registry):** Remote URL: `https://ghcr.io/` (Docker Index: `Use proxy registry`)
+- **Quay:** Remote URL: `https://quay.io/` (Docker Index: `Use proxy registry`)
 
 #### 🔑 GHCR PAT(Personal Access Token) 연동 전략
 - **Public 이미지:** 별도 인증(PAT) 설정 없이 Remote URL 지정만으로 즉시 캐싱 가능.
