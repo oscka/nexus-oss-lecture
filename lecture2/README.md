@@ -1,7 +1,10 @@
 # Nexus Repository 실무 초급: 모듈 2. 아티팩트 저장소 아키텍처 구성
 
+## 0. 참고자료
 
-
+- 강의 : https://github.com/oscka/nexus-oss-lecture
+- 프로젝트 샘플(maven) : https://github.com/oscka/simple-api
+- 프로젝트 샘플(gradle) : https://github.com/oscka/api-start
 
 
 ## 1. 개요 및 배경 (Overview)
@@ -16,6 +19,7 @@
 ### Solution (해결 방안)
 
 - Proxy 저장소를 통한 캐싱 전략과 Group 저장소를 활용한 단일 엔드포인트 통합 구성을 현업 사례와 함께 보여줍니다.
+
 
 
 ## 2. 저장소 타입(Hosted, Proxy, Group)의 역할
