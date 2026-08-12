@@ -23,7 +23,7 @@
 ### 구성도
 
 ```mermaid
-flowchart TB
+flowchart LR
     %% 1. Local Developer & Build Environments
     subgraph ClientEnv["💻 Local Developer & CI Environment"]
         direction LR
