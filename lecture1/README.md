@@ -449,7 +449,15 @@ docker exec nexus-pg df -h /nexus-data/blobs/nfs-blobstore
 
 #### 1. AWS UI에서 S3 버킷 생성
 
-* AWS Console에서 S3 버킷을 생성하고 필요한 IAM 권한(Access Key)을 미리 준비합니다.
+1. Amazon S3에 접속하여 버킷 만들기 클릭
+2. 원하는 이름의 버킷 생성
+3. IAM에 접속하여 IAM 사용자 -> 사용자 생성 클릭
+4. 권한 경계 설정에서 AmazonS3FullAccess 선택
+5. 생성한 IAM 사용자 클릭 -> 
+   보안 자격 증명 -> 
+   액세스 키 만들기 -> 
+   AWS 외부에서 실행되는 애플리케이션 선택
+6. 생성된 액세스키와 비밀 액세스키 저장
 
 #### 2. Nexus Admin UI에서 S3 Blob Store 생성
 
