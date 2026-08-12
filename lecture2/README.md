@@ -18,10 +18,7 @@
 - Proxy 저장소를 통한 캐싱 전략과 Group 저장소를 활용한 단일 엔드포인트 통합 구성을 현업 사례와 함께 보여줍니다.
 
 
-
 ## 2. 저장소 타입(Hosted, Proxy, Group)의 역할
-
-
 
 ### Hosted Repository (자체 저장소)
 
@@ -32,7 +29,7 @@
   - 읽기/쓰기(Read/Write)가 모두 가능합니다.
   - 외부 인터넷망에 공개되지 않는 **자사 IP/자산**을 관리합니다.
   - 배포 정책에 따라 **Release**(수정 불가능한 완성된 버전)와 **Snapshot**(개발 중인 버전) 저장소로 나뉘어 운영됩니다.
-- **예시:** `my-company-common-util-1.0.0.jar`, 사내 프론트엔드 공통 UI 컴포넌트 npm 패키지
+- **예시:** `my-company-common-util-1.0.0.jar`, 사내 프론트엔드 공통 API 컴포넌트 패키지
 
 ### Proxy Repository (대리 저장소)
 
@@ -46,7 +43,7 @@
     2. Nexus에 해당 라이브러리가 이미 캐싱되어 있다면 **외부로 나가지 않고 즉시 제공**합니다.
     3. 캐싱되어 있지 않다면 **Nexus가 외부 저장소에서 다운로드**하여 사내에 저장한 후 제공합니다.
   - **장점:** 외부 트래픽 감소, 빌드 속도 극대화, 외부 저장소 장애나 네트워크 차단 시에도 캐시된 라이브러리로 빌드 가능.
-- **예시:** `maven-central-proxy` (Maven Central 바라봄), `npm-proxy` (registry.npmjs.org 바라봄)
+- **예시:** `maven-central` (Maven Central의 로컬 프록시 저장소), `npm-proxy` (registry.npmjs.org의 로컬 프록시 저장소)
 
 ### Group Repository (그룹 저장소)
 
@@ -146,10 +143,10 @@ Bash
 
 ```
 # 글로벌 레지스트리 변경
-npm config set registry http://<nexus-ip>:8081/repository/npm-group/
+npm config set registry http://localhost:8081/repository/npm-group/
 
 # 로그인 (Hosted 저장소에 publish가 필요한 경우)
-npm login --registry=http://<nexus-ip>:8081/repository/npm-hosted/
+npm login --registry=http://localhost:8081/repository/npm-hosted/
 ```
 
 ## Pypi 연동 방안 (Python)
@@ -207,5 +204,3 @@ Bash
 # 패키지 업로드 명령
 twine upload -r nexus dist/*
 ```
-
-## 
