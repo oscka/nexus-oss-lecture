@@ -192,7 +192,7 @@ docker compose -f docker-compose-pg.yml up -d nexus-pg
 docker exec -it nexus-pg cat /nexus-data/admin.password
 
 # 4) UI 접속확인
-http://localhost:8081
+http://localhost:8082
 
 ```
 
