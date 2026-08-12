@@ -206,7 +206,7 @@ Nexus Repository를 운영할 때 JVM(Nexus 본체)에 직접 SSL 인증서를 �
 
 * **SSL/TLS Offloading:** CPU 연산량이 많은 SSL 암복호화 처리를 Nginx가 전담하여 Nexus 본체의 부하를 줄입니다.
 * **보안 및 포트 표준화:** Nexus 본체를 외부에 직접 노출하지 않고, Nginx 레벨에서 보안 정책을 적용할 수 있습니다.
-* **스트리밍 최적화:** Nginx 설정을 통해 수 GB에 달하는 Docker 이미지나 아티팩트를 메모리 병목 없이 Nexus로 직접 스트리밍 업로드할 수 있습니다.
+* **스트리밍 최적화:** Nginx 타임아웃 및 버퍼링 옵션을 조절하여 대용량 파일/Docker 이미지 업로드 실패를 방지합니다.
 
 ---
 
@@ -449,15 +449,11 @@ docker exec nexus-pg df -h /nexus-data/blobs/nfs-blobstore
 
 #### 1. AWS UI에서 S3 버킷 생성
 
-1. Amazon S3에 접속하여 버킷 만들기 클릭
-2. 원하는 이름의 버킷 생성
-3. IAM에 접속하여 IAM 사용자 -> 사용자 생성 클릭
-4. 권한 경계 설정에서 AmazonS3FullAccess 선택
-5. 생성한 IAM 사용자 클릭 -> 
-   보안 자격 증명 -> 
-   액세스 키 만들기 -> 
-   AWS 외부에서 실행되는 애플리케이션 선택
-6. 생성된 액세스키와 비밀 액세스키 저장
+* S3 버킷 생성 (ex: `nexus-s3-bucket`)
+* IAM 사용자 생성 후 `AmazonS3FullAccess` 정책 부여
+* **액세스 키 생성 옵션**: **`AWS 외부에서 실행되는 애플리케이션`** 선택
+
+
 
 #### 2. Nexus Admin UI에서 S3 Blob Store 생성
 
