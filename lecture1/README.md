@@ -395,7 +395,7 @@ sudo mount -t nfs -o defaults,noatime,rsize=1048576,wsize=1048576,hard,timeo=600
 
 # 3) 마운트 및 소유권 확인 (200:200 표기 확인)
 ls -ld ./nexus-nfs-blobs
-
+df -h ./nexus-nfs-blobs
 
 ```
 
