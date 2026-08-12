@@ -167,7 +167,7 @@ XML
     <mirror>
       <id>nexus</id>
       <mirrorOf>*</mirrorOf>
-      <url>http://<nexus-ip>:8081/repository/maven-public/</url>
+      <url>http://localhost:8081/repository/maven-public/</url>
     </mirror>
   </mirrors>
 
@@ -177,7 +177,7 @@ XML
       <repositories>
         <repository>
           <id>nexus</id>
-          <url>http://<nexus-ip>:8081/repository/maven-public/</url>
+          <url>http://localhost:8081/repository/maven-public/</url>
           <releases><enabled>true</enabled></releases>
           <snapshots><enabled>true</enabled></snapshots>
         </repository>
@@ -209,7 +209,7 @@ Ini, TOML
 
 ```
 # Nexus Group 저장소 레지스트리 지정
-registry=http://<nexus-ip>:8081/repository/npm-group/
+registry=http://localhost:8081/repository/npm-group/
 
 # 사내 자체 패키지 배포(publish) 시 로그인 인증 헤더 (Auth Token 필요 시)
 _auth=<base64-encoded-username-password>
@@ -246,10 +246,10 @@ Ini, TOML
 ```
 [global]
 # Python 패키지 검색 및 설치 URL
-index-url = http://<nexus-ip>:8081/repository/pypi-group/simple
+index-url = http://localhost:8081/repository/pypi-group/simple
 
 # HTTP 사용 시 신뢰할 수 있는 호스트 등록 (HTTPS 사용 시 제외 가능)
-trusted-host = <nexus-ip>
+trusted-host = localhost
 ```
 
 CLI 명령어로 일회성 설치
@@ -257,7 +257,7 @@ CLI 명령어로 일회성 설치
 Bash
 
 ```
-pip install <package-name> --index-url http://<nexus-ip>:8081/repository/pypi-group/simple --trusted-host <nexus-ip>
+pip install <package-name> --index-url http://localhost:8081/repository/pypi-group/simple --trusted-host <nexus-ip>
 ```
 
 사내 패키지 업로드 (twine 사용 시)
@@ -271,7 +271,7 @@ Ini, TOML
 index-servers = nexus
 
 [nexus]
-repository = http://<nexus-ip>:8081/repository/pypi-hosted/
+repository = http://localhost:8081/repository/pypi-hosted/
 username = your-nexus-username
 password = your-nexus-password
 ```

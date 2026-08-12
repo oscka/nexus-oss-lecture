@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
+                              http://maven.apache.org/xsd/settings-1.0.0.xsd">
+
+  <!-- 1. Nexus 인증 계정 정보 설정 -->
+  <servers>
+    <!-- Group 및 Proxy 저장소 접근/다운로드용 (Nexus 기본 계정 사용 예시) -->
+    <server>
+      <id>nexus</id>
+      <username>admin</username>
+      <!-- Nexus 3 설치 시 생성된 admin 비밀번호로 변경하세요 -->
+      <password>osckorea!</password>
+    </server>
+
+    <!-- pom.xml에서 Hosted 저장소로 배포(deploy)할 때 사용하는 서버 ID -->
+    <server>
+      <id>nexus-releases</id>
+      <username>admin</username>
+      <password>osckorea!</password>
+    </server>
+    <server>
+      <id>nexus-snapshots</id>
+      <username>admin</username>
+      <password>osckorea!</password>
+    </server>
+  </servers>
+
+  <!-- 2. 모든 라이브러리 다운로드 요청(*)을 로컬 Nexus Group 저장소로 미러링 -->
+  <mirrors>
+    <mirror>
+      <id>nexus</id>
+      <mirrorOf>*</mirrorOf>
+      <name>Local Nexus Group Repository</name>
+      <url>http://localhost:8081/repository/maven-public/</url>
+    </mirror>
+  </mirrors>
+
+  <!-- 3. Maven 프로필 정의 및 중앙 저장소 재정의 -->
+  <profiles>
+    <profile>
+      <id>nexus</id>
+      <!-- 플러그인 및 아티팩트 저장소 URL 지정 -->
+      <repositories>
+        <repository>
+          <id>nexus</id>
+          <url>http://localhost:8081/repository/maven-public/</url>
+          <releases>
+            <enabled>true</enabled>
+          </releases>
+          <snapshots>
+            <enabled>true</enabled>
+            <!-- 캐시 갱신 주기 (always, daily, interval:X, never) -->
+            <updatePolicy>always</updatePolicy>
+          </snapshots>
+        </repository>
+      </repositories>
+
+      <pluginRepositories>
+        <pluginRepository>
+          <id>nexus</id>
+          <url>http://localhost:8081/repository/maven-public/</url>
+          <releases>
+            <enabled>true</enabled>
+          </releases>
+          <snapshots>
+            <enabled>true</enabled>
+            <updatePolicy>always</updatePolicy>
+          </snapshots>
+        </pluginRepository>
+      </pluginRepositories>
+    </profile>
+  </profiles>
+
+  <!-- 4. 위에서 정의한 nexus 프로필 기본 활성화 -->
+  <activeProfiles>
+    <activeProfile>nexus</activeProfile>
+  </activeProfiles>
+
+</settings>
