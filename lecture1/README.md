@@ -5,13 +5,13 @@
 ### 1-1. Pain Point (현장의 문제점)
 
 * **초기 인프라 구축 및 스토리지 설계의 막막함:** H2를 써야 할지 PostgreSQL을 써야 할지, 스토리지는 로컬(NFS)로 둬야 할지 S3를 써야 할지 등 사내 인프라 환경에 맞는 초기 아키텍처 결정이 어렵습니다. 한 번 잘못 설계하면 추후 마이그레이션 시 큰 비용이 발생합니다.
-* **SSL 인증 및 보안 적용의 험난함:** 사내 보안 규정상 HTTPS 적용이 필수지만, Nexus 자체에 SSL을 올리려다 Java Keytool 등 복잡한 설정에 부딪혀 시행착오를 겪거나 대용량 파일 업로드 시 끊김 현상이 발생합니다.
+* **SSL/HTTPS 적용 및 프록시 설정의 험난함:** Nexus 본체에 직접 SSL을 적용하려다 Java Keytool(Keystore) 설정의 복잡함에 부딪힙니다. 또한 Nginx 프록시를 둘 때도 대용량 파일 업로드 중단 현상을 겪게 됩니다.
 
 ### 1-2. Solution (해결 방안)
 
 * **명확한 아키텍처 판단 기준 제시:** 인프라 규모에 따른 DB 선택(H2 vs PostgreSQL) 및 스토리지(File vs S3) 설계 기준을 명확한 수치와 함께 정리해 드립니다.
-* **Nginx 리버스 프록시 SSL 연동 데모:** Nexus 본체 대신 앞단에 Nginx를 배치하여 가장 효율적이고 안전하게 SSL을 구성하고 대용량 업로드 병목을 해결하는 베스트 프랙티스를 시연합니다.
-* **맞춤형 스토리지(NFS/S3) 실무 구성:** 파일 기반 스토리지의 권한 충돌 방지 노하우와 클라우드 S3 객체 스토리지의 올바른 연동 방법을 직접 보여드립니다.
+* **Nginx 리버스 프록시 SSL 연동 데모:** Nexus 본체 대신 앞단에 Nginx를 배치하여 가장 효율적이고 안전하게 SSL을 구성하는 베스트 프랙티스를 시연합니다.
+* **맞춤형 스토리지(NFS/S3) 실무 구성:** 파일 기반 스토리지와 클라우드 S3 객체 스토리지의 올바른 연동 방법을 직접 보여드립니다.
 
 ---
 
@@ -31,9 +31,23 @@ Nexus Repository는 내부 데이터를 두 가지 형태로 분리하여 관리
 1. **Java 환경:** Nexus 3.78.0 이상 버전부터는 자체적으로 **OpenJDK Java 21**을 내장하여 제공하므로 별도의 호스트 Java 설치에 대한 의존성이 줄었습니다.
 2. **메모리(RAM) 할당 원칙:** 가용 메모리의 **3분의 2를 Nexus(JVM)에 할당**하고, 나머지 3분의 1은 OS 프로세스 및 시스템 버퍼용으로 남겨두어야 합니다.
 3. **디스크 임계값 (4GB Watermark):** 스토리지는 최소 4GB 이상의 여유 공간을 항상 유지해야 합니다. 만약 여유 공간이 **4GB 미만으로 떨어지면, Nexus 데이터베이스는 데이터 손상을 막기 위해 즉시 'Read-Only(읽기 전용)' 모드로 강제 전환**되어 모든 업로드가 차단됩니다.
-4. **File Handle (파일 디스크립터) 제한 상향:** Nexus는 대량의 HTTP 연결과 파일 I/O를 처리하므로 OS의 기본 File Handle 수량을 크게 초과하여 사용합니다. 설정이 상향되지 않으면 심각한 데이터 유실(Data Loss)이 발생할 수 있습니다. (Linux 기준 통상 `65536` 이상 권장)
+4. **File Handle (파일 디스크립터) 제한 상향:** Nexus는 대량의 HTTP 연결과 파일 I/O를 처리하므로 OS의 기본 File Handle 수량을 크게 초과하여 사용합니다. 설정이 상향되지 않으면 데이터 유실(Data Loss)이 발생할 수 있습니다. (Linux 기준 통상 `65536` 이상 권장)
+
+### 2-3. 규모별 Nexus 권장 사양
+
+운영하려는 시스템의 일일/시간당 트래픽 요구량에 맞춰 인프라 스펙을 선택해야 합니다.
+
+| Profile Size | Profile Description | DB | CPU | RAM | Local Blob Storage |
+| --- | --- | --- | --- | --- | --- |
+| **Small** | 시간당 2만 건 / 일일 20만 건 | Embedded H2 | 2 Core | 8 GB | 20 GB |
+| **Medium** | 시간당 10만 건 / 일일 100만 건 | External PostgreSQL | 4 Core | 8 GB | 200 GB |
+| **Large** | 시간당 100만 건 / 일일 1,000만 건 | External PostgreSQL (HA) | 노드당 4 Core | 노드당 16 GB | 200 GB 이상 |
+| **Very Large** | 시간당 200만 건 / 일일 2,000만 건 | External PostgreSQL (HA) | 노드당 8 Core | 노드당 32 GB | 10 TB 이상 |
 
 ---
+
+
+
 
 ## 3. 데이터베이스 아키텍처 (H2 vs PostgreSQL) 및 배포 실습
 
@@ -178,7 +192,7 @@ docker compose -f docker-compose-pg.yml up -d nexus-pg
 docker exec -it nexus-pg cat /nexus-data/admin.password
 
 # 4) UI 접속확인
-http://localhost:8081
+http://localhost:8082
 
 ```
 
@@ -191,7 +205,7 @@ http://localhost:8081
 Nexus Repository를 운영할 때 JVM(Nexus 본체)에 직접 SSL 인증서를 적용하기보다는, 앞단에 Nginx와 같은 리버스 프록시를 두는 아키텍처가 일반적으로 권장됩니다.
 
 * **SSL/TLS Offloading:** CPU 연산량이 많은 SSL 암복호화 처리를 Nginx가 전담하여 Nexus 본체의 부하를 줄입니다.
-* **보안 및 포트 표준화:** Docker Client는 보안상 HTTPS(443) 통신이 강제되므로 SSL 프록시 구성이 필수입니다.
+* **보안 및 포트 표준화:** Nexus 본체를 외부에 직접 노출하지 않고, Nginx 레벨에서 보안 정책을 적용할 수 있습니다.
 * **스트리밍 최적화:** Nginx 설정을 통해 수 GB에 달하는 Docker 이미지나 아티팩트를 메모리 병목 없이 Nexus로 직접 스트리밍 업로드할 수 있습니다.
 
 ---
@@ -295,7 +309,7 @@ docker compose -f docker-compose-nginx.yml up -d
 ```
 
 1. 웹 브라우저를 열고 `http://localhost`로 접속합니다.
-2. `https://localhost`로 자동 리다이렉트 되는지 확인하고, SSL 인증서가 정상 적용되어 자물쇠 아이콘이 표시되는지 확인합니다.
+2. `https://localhost`로 자동 리다이렉트 되는지 확인하고, SSL 인증서가 정상 적용되어 표시되는지 확인합니다.
 
 ---
 
@@ -314,7 +328,7 @@ Blob Store는 메타데이터(DB 저장)를 제외한 실제 바이너리 아티
 
 리포지토리에 파일을 추가하면 Nexus는 파일 이름 충돌과 OS 파일 시스템 제약을 방지하기 위해 파일명을 난독화(Hash 형태 등)하여 저장합니다.
 
-**경고:** Blob Store에 저장된 파일은 Nexus 애플리케이션의 통제를 받습니다. 디렉토리에 접근해 파일을 수동으로 삭제, 이동, 수정할 경우 DB 메타데이터와 불일치가 발생하여 심각한 데이터 손상(Corrupted)이 발생할 수 있습니다.
+**경고:** Blob Store에 저장된 파일은 Nexus 애플리케이션의 통제를 받습니다. 디렉토리에 접근해 파일을 수동으로 삭제, 이동, 수정할 경우 DB 메타데이터와 불일치가 발생하여 데이터 손상(Corrupted)이 발생할 수 있습니다.
 
 ---
 
@@ -322,7 +336,7 @@ Blob Store는 메타데이터(DB 저장)를 제외한 실제 바이너리 아티
 
 #### 1. 기본 저장소(`default`) 분리 권장
 
-Nexus를 처음 설치하면 `$data-dir` 내부에 `default`라는 이름의 파일 시스템 Blob Store가 생성됩니다. 운영 안정성과 백업 효율성(데이터 vs 바이너리)을 높이려면, 이 기본 경로 외부에 별도의 Blob Store를 생성하여 사용하는 것이 권장됩니다.
+Nexus를 처음 설치하면 `$data-dir` 내부에 `default`라는 이름의 파일 시스템 Blob Store가 생성됩니다. 운영 안정성과 백업 효율성을 높이려면, 이 기본 경로 외부에 별도의 Blob Store를 생성하여 사용하는 것이 권장됩니다.
 
 #### 2. 과도한 Blob Store 분할의 위험성
 
@@ -381,7 +395,7 @@ sudo mount -t nfs -o defaults,noatime,rsize=1048576,wsize=1048576,hard,timeo=600
 
 # 3) 마운트 및 소유권 확인 (200:200 표기 확인)
 ls -ld ./nexus-nfs-blobs
-
+df -h ./nexus-nfs-blobs
 
 ```
 
