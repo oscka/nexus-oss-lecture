@@ -22,6 +22,7 @@
 
 ### 구성도
 
+```mermaid
 flowchart TB
     %% 1. Local Developer & Build Environments
     subgraph ClientEnv["💻 Local Developer & CI Environment"]
@@ -95,7 +96,7 @@ flowchart TB
     class MavenHosted,NpmHosted,PyHosted hosted;
     class MavenProxy,NpmProxy,PyProxy proxy;
     class MavenCentral,NpmRegistry,PyPIRegistry external;
-
+```
 
 ### Hosted Repository (자체 저장소)
 
