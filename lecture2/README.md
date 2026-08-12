@@ -20,6 +20,83 @@
 
 ## 2. 저장소 타입(Hosted, Proxy, Group)의 역할
 
+### 구성도
+
+flowchart TB
+    %% 1. Local Developer & Build Environments
+    subgraph ClientEnv["💻 Local Developer & CI Environment"]
+        direction LR
+        JavaDev["☕ Java Project\n(~/.m2/settings.xml)"]
+        NodeDev["🟢 Node.js Project\n(.npmrc)"]
+        PyDev["🐍 Python Project\n(~/.pip/pip.conf)"]
+    end
+
+    %% 2. Nexus Repository OSS Structure
+    subgraph Nexus["📦 Nexus Repository OSS (Local Server)"]
+        
+        %% Group Layer
+        subgraph GroupLayer["Group Repositories (Single Entrypoints)"]
+            MavenGroup["maven-public\n(Group)"]
+            NpmGroup["npm-group\n(Group)"]
+            PyGroup["pypi-group\n(Group)"]
+        end
+
+        %% Hosted Layer
+        subgraph HostedLayer["Hosted Repositories (Internal Private)"]
+            MavenHosted["maven-releases / snapshots\n(Hosted)"]
+            NpmHosted["npm-internal\n(Hosted)"]
+            PyHosted["pypi-hosted\n(Hosted)"]
+        end
+
+        %% Proxy Layer
+        subgraph ProxyLayer["Proxy Repositories (Local Cache)"]
+            MavenProxy["maven-central-proxy\n(Proxy)"]
+            NpmProxy["npm-proxy\n(Proxy)"]
+            PyProxy["pypi-proxy\n(Proxy)"]
+        end
+    end
+
+    %% 3. External Public Registries
+    subgraph ExternalRegistry["🌐 External Public Registries"]
+        MavenCentral["Maven Central\n(repo1.maven.org)"]
+        NpmRegistry["npm Registry\n(registry.npmjs.org)"]
+        PyPIRegistry["PyPI Registry\n(pypi.org)"]
+    end
+
+    %% Client Connection to Group Repositories
+    JavaDev -->|1. Request Artifact| MavenGroup
+    NodeDev -->|1. Request Package| NpmGroup
+    PyDev -->|1. Request Package| PyGroup
+
+    %% Group Routing to Hosted & Proxy
+    MavenGroup --> MavenHosted
+    MavenGroup --> MavenProxy
+
+    NpmGroup --> NpmHosted
+    NpmGroup --> NpmProxy
+
+    PyGroup --> PyHosted
+    PyGroup --> PyProxy
+
+    %% Proxy Connection to External Registries (Cache miss scenario)
+    MavenProxy -->|2. Fetch & Cache| MavenCentral
+    NpmProxy -->|2. Fetch & Cache| NpmRegistry
+    PyProxy -->|2. Fetch & Cache| PyPIRegistry
+
+    %% Styling
+    classDef client fill:#EBF5FB,stroke:#2980B9,stroke-width:2px;
+    classDef group fill:#FEF9E7,stroke:#F39C12,stroke-width:2px;
+    classDef hosted fill:#E8F8F5,stroke:#1ABC9C,stroke-width:2px;
+    classDef proxy fill:#EAECEE,stroke:#7F8C8D,stroke-width:2px;
+    classDef external fill:#FDEDEC,stroke:#E74C3C,stroke-width:2px;
+
+    class JavaDev,NodeDev,PyDev client;
+    class MavenGroup,NpmGroup,PyGroup group;
+    class MavenHosted,NpmHosted,PyHosted hosted;
+    class MavenProxy,NpmProxy,PyProxy proxy;
+    class MavenCentral,NpmRegistry,PyPIRegistry external;
+
+
 ### Hosted Repository (자체 저장소)
 
 > **"우리가 직접 만든 라이브러리/아티팩트를 보관하는 장소"**
